@@ -23,7 +23,7 @@ Web development environment setup for Ubuntu — single entry point, modular arc
 
 ## Project Structure
 
-```
+```bash
 ws-setup/
 ├── install.sh              # Single entry point
 ├── config/                 # All package lists, versions, app IDs
