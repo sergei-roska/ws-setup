@@ -23,7 +23,7 @@ Web development environment setup for Ubuntu — single entry point, modular arc
 
 ## Project Structure
 
-```bash
+```text
 ws-setup/
 ├── install.sh              # Single entry point
 ├── config/                 # All package lists, versions, app IDs
@@ -118,7 +118,7 @@ NPM_GLOBAL_PACKAGES=(
 
 ## CLI Reference
 
-```
+```text
 OPTIONS:
   --yes                    Non-interactive mode
   --only MOD1,MOD2         Execute only specified modules
