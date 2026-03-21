@@ -4,7 +4,7 @@
 mod::flatpak-apps() {
   begin_section "Flatpak Applications"
 
-  local groups="${APP_GROUPS:-all}"
+  local groups="${APP_GROUPS:-essential}"
   log "Installing Flatpak app groups: $groups"
 
   source "$WS_ROOT/config/apps-flatpak.conf"

@@ -57,6 +57,7 @@ ws-setup/
 │   ├── composer.sh
 │   ├── phpcs.sh
 │   ├── node.sh
+│   ├── claude.sh
 │   ├── brew.sh
 │   ├── terminus.sh
 │   ├── shell.sh
@@ -110,6 +111,8 @@ To add a global npm package:
 ```bash
 # config/node.conf
 NPM_GLOBAL_PACKAGES=(
+  @openai/codex
+  @google/gemini-cli
   yarn
   pnpm
   my-new-tool   # just add here

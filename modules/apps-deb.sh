@@ -20,7 +20,6 @@ mod::apps-deb() {
     case "$app" in
       jetbrains-toolbox) [[ -x /opt/jetbrains-toolbox/jetbrains-toolbox ]] ;;
       libreoffice)       cmd_exists libreoffice ;;
-      thunderbird)       cmd_exists thunderbird ;;
       zoom)              cmd_exists zoom ;;
       *)                 false ;;
     esac
