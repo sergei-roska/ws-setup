@@ -31,7 +31,22 @@ require_not_root() {
 }
 
 check_internet() {
-  curl -s --max-time 5 --head https://google.com >/dev/null
+  if cmd_exists curl; then
+    curl -fsS --max-time 5 --head https://google.com >/dev/null 2>&1
+    return $?
+  fi
+
+  if cmd_exists wget; then
+    wget -q --spider --timeout=5 https://google.com >/dev/null 2>&1
+    return $?
+  fi
+
+  if cmd_exists ping; then
+    ping -c 1 -W 5 google.com >/dev/null 2>&1
+    return $?
+  fi
+
+  timeout 5 bash -c 'exec 3<>/dev/tcp/google.com/443' >/dev/null 2>&1
 }
 
 # --- APT helpers -------------------------------------------------------------
