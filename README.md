@@ -122,6 +122,17 @@ NPM_GLOBAL_PACKAGES=(
 )
 ```
 
+### Git Configuration (Work vs. Personal)
+
+The setup supports a hybrid Git configuration to keep work and personal identities separate:
+
+1.  **Global Identity (Work):** Defined in `~/.gitconfig` (typically using your company email).
+2.  **Contextual Identity (Personal):** Automatically switches to your personal email when working inside `/path/to/directory/**` using Git's `includeIf` feature.
+
+This is managed via:
+- `~/.gitconfig`: Contains the `[includeIf "gitdir:/path/to/directory/**"]` directive.
+- `~/.gitconfig-personal`: Stores your personal `[user]` settings.
+
 ## CLI Reference
 
 ```text
