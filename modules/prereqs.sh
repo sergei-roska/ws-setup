@@ -6,7 +6,6 @@ mod::prereqs() {
 
   check_os
   require_not_root
-  require_cmd curl
 
   # Connectivity check.
   if ! check_internet; then
