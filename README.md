@@ -30,7 +30,6 @@ ws-setup/
 │   ├── packages.conf       # APT base packages
 │   ├── apps-flatpak.conf   # Flatpak apps by group
 │   ├── apps-snap.conf      # Snap apps by group
-│   ├── apps-deb.conf       # DEB app categories
 │   ├── apps-ppa.conf       # PPA packages + repo mapping
 │   ├── composer.conf       # Global Composer packages
 │   ├── node.conf           # NVM version, global npm packages
@@ -60,7 +59,6 @@ ws-setup/
 │   ├── brew.sh
 │   ├── terminus.sh
 │   ├── shell.sh
-│   ├── apps-deb.sh
 │   ├── apps-apt.sh
 │   └── summary.sh
 └── README.md
@@ -94,7 +92,7 @@ register_module  composer     "php"
 register_module  terminus     "php composer"
 ```
 
-If you `--skip` a dependency, the orchestrator fails early with a clear error instead of crashing mid-install.
+If you `--skip` a dependency (or leave it out of `--only`), the orchestrator logs a warning and continues: it assumes the dependency is already installed. Modules always run in registry order, whatever order `--only` lists them in. A failing command inside a module stops the run and reports the module and the command. The exceptions are per-item installs (global Composer packages, snap, Flatpak and PPA apps): a failed item is logged and listed in a warning, and the run continues.
 
 ### Config Files
 

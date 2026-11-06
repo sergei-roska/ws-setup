@@ -8,7 +8,7 @@ php_has_candidate() {
   [[ -n "$candidate" && "$candidate" != "(none)" ]]
 }
 
-# install_apt_package returns 0 even when apt-get fails, so verify the result.
+# Install one package and double-check the dpkg state afterwards.
 php_install_package() {
   install_apt_package "$1"
   if ! dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"; then
@@ -19,10 +19,6 @@ php_install_package() {
 
 mod::php() {
   begin_section "PHP Installation"
-
-  if cmd_exists php; then
-    log_skip "PHP"; end_section "PHP Installation"; return 0
-  fi
 
   source "$WS_ROOT/config/php.conf"
   local base="php${PHP_VERSION}"

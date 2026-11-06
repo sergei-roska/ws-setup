@@ -11,35 +11,16 @@ USER_CONFIG_FILE="$USER_CONFIG_DIR/user.conf"
 
 confirm_yes() {
   local prompt="${1:-Do you want to continue?}"
-  local response
+  local response=""
 
   while true; do
-    read -p "$prompt [y/N]: " -r response
+    read -p "$prompt [y/N]: " -r response || response=""
     case "$response" in
       [yY][eE][sS]|[yY]) return 0 ;;
       [nN][oO]|[nN]|"")  return 1 ;;
-      *) echo "Please answer yes or no." ;;
+      *) echo "Please answer yes or no." >&2 ;;
     esac
   done
-}
-
-# Prompt for input with environment-variable fallback.
-prompt_or_env() {
-  local env_var="$1" prompt="$2" default_value="${3:-}"
-
-  if [[ -n "${!env_var:-}" ]]; then
-    echo "${!env_var}"
-    return 0
-  fi
-
-  local response
-  if [[ -n "$default_value" ]]; then
-    read -p "$prompt [$default_value]: " -r response
-    echo "${response:-$default_value}"
-  else
-    read -p "$prompt: " -r response
-    echo "$response"
-  fi
 }
 
 # --- User config persistence -------------------------------------------------
@@ -77,13 +58,36 @@ EOF
   log_success "User configuration saved to $USER_CONFIG_FILE"
 }
 
+# Replace the value of an existing KEY= line in the user config. Pure bash, so
+# "/", "&" and backslashes in the value are written literally.
+set_user_config_value() {
+  local key="$1" value="$2" line tmp
+
+  tmp=$(mktemp "$USER_CONFIG_DIR/user.conf.XXXXXX") || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" == "$key="* ]]; then
+      line="$key=$value"
+    fi
+    printf '%s\n' "$line"
+  done < "$USER_CONFIG_FILE" > "$tmp" || { rm -f "$tmp"; return 1; }
+
+  chmod 600 "$tmp"
+  mv "$tmp" "$USER_CONFIG_FILE"
+}
+
 # Prompt, export, and optionally persist the value.
+# Stdout carries only the resulting value, so callers can use $(...). Prompts
+# and log output go to stderr. A third argument (even "") counts as the default,
+# which makes the value optional in non-interactive mode.
 prompt_and_save() {
   local env_var="$1" prompt="$2" default_value="${3:-}" save_config="${4:-true}"
+  local has_default=true response=""
+
+  [[ $# -ge 3 ]] || has_default=false
 
   # Environment variable already set?
   if [[ -n "${!env_var:-}" ]]; then
-    echo "${!env_var}"
+    printf '%s\n' "${!env_var}"
     return 0
   fi
 
@@ -91,15 +95,24 @@ prompt_and_save() {
   if [[ -f "$USER_CONFIG_FILE" ]]; then
     local saved
     saved=$(grep "^${env_var}=" "$USER_CONFIG_FILE" 2>/dev/null | cut -d'=' -f2- || true)
-    [[ -n "$saved" ]] && default_value="$saved"
+    if [[ -n "$saved" ]]; then
+      default_value="$saved"
+      has_default=true
+    fi
   fi
 
-  local response
-  if [[ -n "$default_value" ]]; then
-    read -p "$prompt [$default_value]: " -r response
+  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+    # Never block on input in non-interactive mode.
+    if [[ "$has_default" != "true" ]]; then
+      log_error "$env_var is not set and has no saved value. Set $env_var in the environment (non-interactive mode)."
+      return 1
+    fi
+    response="$default_value"
+  elif [[ -n "$default_value" ]]; then
+    read -p "$prompt [$default_value]: " -r response || response=""
     response="${response:-$default_value}"
   else
-    read -p "$prompt: " -r response
+    read -p "$prompt: " -r response || response=""
   fi
 
   export "$env_var"="$response"
@@ -110,18 +123,18 @@ prompt_and_save() {
       if confirm_yes "Save $env_var for future use?"; then
         mkdir -p "$USER_CONFIG_DIR"
         if [[ ! -f "$USER_CONFIG_FILE" ]]; then
-          save_user_config
+          save_user_config >&2
         elif grep -q "^${env_var}=" "$USER_CONFIG_FILE"; then
-          sed -i "s/^${env_var}=.*/${env_var}=${response}/" "$USER_CONFIG_FILE"
+          set_user_config_value "$env_var" "$response"
         else
-          echo "${env_var}=${response}" >> "$USER_CONFIG_FILE"
+          printf '%s=%s\n' "$env_var" "$response" >> "$USER_CONFIG_FILE"
         fi
-        log "Updated $env_var in user configuration"
+        log "Updated $env_var in user configuration" >&2
       fi
     fi
   fi
 
-  echo "$response"
+  printf '%s\n' "$response"
 }
 
 show_user_config() {

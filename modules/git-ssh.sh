@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Module: git-ssh — Git configuration and SSH key generation.
+# Module: git-ssh - Git configuration and SSH key generation.
 
 mod::git-ssh() {
   begin_section "Git and SSH Setup"
@@ -8,31 +8,42 @@ mod::git-ssh() {
 
   # --- Git config -----------------------------------------------------------
   local git_name git_email
-  git_name=$(prompt_and_save "GIT_NAME" "Enter your Git name")
-  git_email=$(prompt_and_save "GIT_EMAIL" "Enter your Git email")
+  git_name=$(prompt_and_save "GIT_NAME" "Enter your Git name") || die "GIT_NAME is required"
+  git_email=$(prompt_and_save "GIT_EMAIL" "Enter your Git email") || die "GIT_EMAIL is required"
 
   if ! [[ "$git_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
     die "Invalid email format: $git_email"
   fi
 
-  git config --global user.name "$git_name"
-  git config --global user.email "$git_email"
+  git config --global user.name "$git_name" || die "Failed to set git user.name"
+  git config --global user.email "$git_email" || die "Failed to set git user.email"
   # Only set defaults if not already configured (preserve existing preferences).
-  git config --global init.defaultBranch 2>/dev/null || git config --global init.defaultBranch main
-  git config --global pull.rebase 2>/dev/null       || git config --global pull.rebase false
-  git config --global core.autocrlf 2>/dev/null      || git config --global core.autocrlf input
+  git config --global init.defaultBranch >/dev/null 2>&1 || git config --global init.defaultBranch main
+  git config --global pull.rebase >/dev/null 2>&1       || git config --global pull.rebase false
+  git config --global core.autocrlf >/dev/null 2>&1      || git config --global core.autocrlf input
   log "Git configured for $git_name <$git_email>"
 
   # --- SSH passphrase -------------------------------------------------------
-  local ssh_passphrase=""
+  # Validated before any key is generated: ssh-keygen rejects passphrases
+  # shorter than 5 characters, and that would fail after earlier keys exist.
+  local ssh_passphrase="" min_passphrase=5
   if [[ -n "${SSH_PASSPHRASE:-}" ]]; then
     ssh_passphrase="$SSH_PASSPHRASE"
+    if (( ${#ssh_passphrase} < min_passphrase )); then
+      die "SSH_PASSPHRASE must be empty or at least $min_passphrase characters (ssh-keygen minimum)"
+    fi
     log "Using SSH passphrase from environment variable"
   elif [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
     log_warning "Non-interactive mode: SSH keys will be generated without passphrase"
   else
-    read -rs -p "Enter passphrase for SSH keys (Enter for none): " ssh_passphrase
-    echo
+    while true; do
+      read -rs -p "Enter passphrase for SSH keys (Enter for none, min $min_passphrase characters): " ssh_passphrase || ssh_passphrase=""
+      echo
+      if [[ -z "$ssh_passphrase" ]] || (( ${#ssh_passphrase} >= min_passphrase )); then
+        break
+      fi
+      log_warning "Passphrase is too short (minimum $min_passphrase characters); please try again"
+    done
   fi
 
   if [[ -z "$ssh_passphrase" ]]; then
@@ -57,12 +68,17 @@ mod::git-ssh() {
 
     log "Generating SSH key for $service..."
     case "$key_type" in
-      ed25519) ssh-keygen -t ed25519 -C "$git_email" -f "$key_file" -N "$ssh_passphrase" ;;
+      ed25519)
+        ssh-keygen -t ed25519 -C "$git_email" -f "$key_file" -N "$ssh_passphrase" \
+          || die "ssh-keygen failed for $service"
+        ;;
       rsa)
         if [[ "$service" == "pantheon" ]]; then
-          ssh-keygen -t rsa -b 4096 -m PEM -C "$git_email" -f "$key_file" -N "$ssh_passphrase"
+          ssh-keygen -t rsa -b 4096 -m PEM -C "$git_email" -f "$key_file" -N "$ssh_passphrase" \
+            || die "ssh-keygen failed for $service"
         else
-          ssh-keygen -t rsa -b 4096 -C "$git_email" -f "$key_file" -N "$ssh_passphrase"
+          ssh-keygen -t rsa -b 4096 -C "$git_email" -f "$key_file" -N "$ssh_passphrase" \
+            || die "ssh-keygen failed for $service"
         fi
         ;;
     esac
@@ -70,7 +86,13 @@ mod::git-ssh() {
   done
 
   # --- SSH agent ------------------------------------------------------------
-  eval "$(ssh-agent -s)"
+  # Reuse the agent already reachable through SSH_AUTH_SOCK; start a new one
+  # only when there is none, so repeated runs do not spawn agents.
+  if [[ -z "${SSH_AUTH_SOCK:-}" || ! -S "$SSH_AUTH_SOCK" ]]; then
+    local agent_env
+    agent_env=$(ssh-agent -s) || die "Failed to start ssh-agent"
+    eval "$agent_env"
+  fi
   for service in "${!SSH_KEYS[@]}"; do
     local key_file="$HOME/.ssh/id_${service}_${SSH_KEYS[$service]}"
     if [[ -f "$key_file" ]]; then
@@ -83,7 +105,8 @@ mod::git-ssh() {
     log "Creating SSH config..."
 
     local pantheon_env_id
-    pantheon_env_id=$(prompt_and_save "PANTHEON_ENV_ID" "Enter your Pantheon ENV ID (optional)" "")
+    pantheon_env_id=$(prompt_and_save "PANTHEON_ENV_ID" "Enter your Pantheon ENV ID (optional)" "") \
+      || die "PANTHEON_ENV_ID lookup failed"
 
     cat > "$HOME/.ssh/config" <<EOF
 # GitHub

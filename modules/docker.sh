@@ -11,7 +11,7 @@ mod::docker() {
   # GPG key.
   log "Adding Docker GPG key..."
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 
   # Repository.
   log "Adding Docker repository..."

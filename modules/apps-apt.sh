@@ -35,8 +35,9 @@ mod::apps-apt() {
       fi
       log "Adding PPA $repo..."
       require_cmd add-apt-repository
-      sudo add-apt-repository -y "$repo" 2>&1 | tee -a "$LOG_FILE"
-      sudo apt-get update -y 2>&1 | tee -a "$LOG_FILE"
+      # Called from an || list, where errexit is off: check explicitly.
+      sudo add-apt-repository -y "$repo" 2>&1 | tee -a "$LOG_FILE" || return 1
+      sudo apt-get update -y 2>&1 | tee -a "$LOG_FILE" || return 1
     else
       log_error "Unsupported repo format for '$pkg': $repo"
       return 1

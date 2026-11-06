@@ -6,7 +6,8 @@
 # Usage: ./install.sh [OPTIONS]
 # Run ./install.sh --help for full usage information.
 
-set -euo pipefail
+# errtrace (-E) makes the ERR trap fire for failures inside functions too.
+set -Eeuo pipefail
 
 # === Resolve project root ====================================================
 
@@ -64,7 +65,6 @@ register_module  node         "prereqs"
 register_module  brew         "prereqs"
 register_module  terminus     "php composer"
 register_module  shell        ""
-register_module  apps-deb     "prereqs"
 register_module  apps-apt     "prereqs"
 register_module  summary      ""
 
@@ -119,77 +119,96 @@ EOF
 
 # === Argument parsing =========================================================
 
+arg_error() {
+  echo "Error: $1" >&2
+  echo "Use --help for usage." >&2
+  exit 1
+}
+
+# Require a non-empty value after an option that takes one.
+# Usage: need_value OPTION "$#" "${2:-}"
+need_value() {
+  local opt="$1" argc="$2" value="${3:-}"
+  [[ "$argc" -ge 2 && -n "$value" && "$value" != --* ]] \
+    || arg_error "Option $opt requires an argument"
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --yes)           NON_INTERACTIVE=true; export DEBIAN_FRONTEND=noninteractive; shift ;;
-      --only)          ONLY_MODULES="$2"; shift 2 ;;
-      --skip)          SKIP_MODULES="$2"; shift 2 ;;
+      --only)          need_value "$1" "$#" "${2:-}"; ONLY_MODULES="$2"; shift 2 ;;
+      --skip)          need_value "$1" "$#" "${2:-}"; SKIP_MODULES="$2"; shift 2 ;;
       --list)          LIST_ONLY=true; shift ;;
-      --log-file)      CUSTOM_LOG_FILE="$2"; shift 2 ;;
+      --log-file)      need_value "$1" "$#" "${2:-}"; CUSTOM_LOG_FILE="$2"; shift 2 ;;
       --verbose)       VERBOSE=true; shift ;;
       --reset-config)  RESET_CONFIG=true; shift ;;
       --help|-h)       show_help; exit 0 ;;
-      *)               echo "Error: Unknown option $1" >&2; echo "Use --help for usage." >&2; exit 1 ;;
+      *)               arg_error "Unknown option $1" ;;
     esac
   done
 }
 
-# === Module filtering =========================================================
+# === Module selection ========================================================
 
-# Returns the filtered list of module names (one per line).
-filtered_modules() {
-  local -a result=()
+# Modules to run, in registry order.  Filled by resolve_modules (main shell,
+# so that die on an unknown name really stops the run).
+declare -a SELECTED_MODULES=()
+
+resolve_modules() {
+  local -A known=() wanted=() skipped=()
+  local -a only_list=() skip_list=()
+  local reg name
+
+  for reg in "${MODULE_ORDER[@]}"; do known["$reg"]=1; done
 
   if [[ -n "$ONLY_MODULES" ]]; then
     IFS=',' read -ra only_list <<< "$ONLY_MODULES"
     for name in "${only_list[@]}"; do
       name="${name// /}"
-      # Validate it exists in registry.
-      local found=false
-      for reg in "${MODULE_ORDER[@]}"; do
-        [[ "$reg" == "$name" ]] && { found=true; break; }
-      done
-      $found || die "Unknown module in --only: $name"
-      result+=("$name")
+      [[ -z "$name" ]] && continue
+      [[ -n "${known[$name]:-}" ]] || die "Unknown module in --only: $name (see --list)"
+      wanted["$name"]=1
     done
-  else
-    result=("${MODULE_ORDER[@]}")
   fi
 
   if [[ -n "$SKIP_MODULES" ]]; then
     IFS=',' read -ra skip_list <<< "$SKIP_MODULES"
-    local -a tmp=()
-    for name in "${result[@]}"; do
-      local skip=false
-      for s in "${skip_list[@]}"; do
-        [[ "$name" == "${s// /}" ]] && { skip=true; break; }
-      done
-      $skip || tmp+=("$name")
+    for name in "${skip_list[@]}"; do
+      name="${name// /}"
+      [[ -z "$name" ]] && continue
+      skipped["$name"]=1
     done
-    result=("${tmp[@]}")
   fi
 
-  printf '%s\n' "${result[@]}"
+  # Walk the registry so execution always follows registry order.
+  SELECTED_MODULES=()
+  for reg in "${MODULE_ORDER[@]}"; do
+    if [[ -n "$ONLY_MODULES" && -z "${wanted[$reg]:-}" ]]; then continue; fi
+    if [[ -n "${skipped[$reg]:-}" ]]; then continue; fi
+    SELECTED_MODULES+=("$reg")
+  done
+
+  [[ ${#SELECTED_MODULES[@]} -gt 0 ]] || die "No modules selected. Use --list to see available modules."
 }
 
 # === Dependency validation ====================================================
 
+# A dependency that is not scheduled may already be satisfied on this machine
+# (hard to detect), so only warn: the user chose the module set explicitly.
 validate_deps() {
-  local -a modules=()
-  while IFS= read -r m; do [[ -n "$m" ]] && modules+=("$m"); done < <(filtered_modules)
-
-  # Build a set of scheduled modules for O(1) lookup.
+  local m d deps
   local -A scheduled=()
-  for m in "${modules[@]}"; do scheduled["$m"]=1; done
+  for m in "${SELECTED_MODULES[@]}"; do scheduled["$m"]=1; done
 
-  for m in "${modules[@]}"; do
-    local deps="${MODULE_DEPS[$m]:-}"
+  for m in "${SELECTED_MODULES[@]}"; do
+    deps="${MODULE_DEPS[$m]:-}"
     [[ -z "$deps" ]] && continue
+    local -a dep_list=()
     read -ra dep_list <<< "$deps"
     for d in "${dep_list[@]}"; do
       if [[ -z "${scheduled[$d]:-}" ]]; then
-        die "Module '$m' depends on '$d', but '$d' is not scheduled (skipped or not in --only)."
+        log_warning "Module '$m' depends on '$d', which is not scheduled (skipped or not in --only); continuing"
       fi
     done
   done
@@ -222,14 +241,9 @@ list_modules() {
 confirm_execution() {
   [[ "$NON_INTERACTIVE" == "true" ]] && return 0
 
-  local -a modules=()
-  while IFS= read -r m; do [[ -n "$m" ]] && modules+=("$m"); done < <(filtered_modules)
-
-  [[ ${#modules[@]} -eq 0 ]] && die "No modules selected. Use --list to see available modules."
-
   echo "The following modules will be executed:"
-  local i=1
-  for m in "${modules[@]}"; do
+  local i=1 m
+  for m in "${SELECTED_MODULES[@]}"; do
     printf "  %2d. %s\n" "$i" "$m"
     ((i++))
   done
@@ -239,44 +253,58 @@ confirm_execution() {
 
 # === Execute modules ==========================================================
 
+# Progress tracking for the ERR trap: which module is running right now.
+CURRENT_MODULE=""
+CURRENT_MODULE_POS=""
+
 execute_modules() {
-  local -a modules=()
-  while IFS= read -r m; do [[ -n "$m" ]] && modules+=("$m"); done < <(filtered_modules)
+  local total=${#SELECTED_MODULES[@]} current=1 name fn
 
-  local total=${#modules[@]} current=1
-
-  for name in "${modules[@]}"; do
-    log "[$current/$total] Executing module: $name"
+  for name in "${SELECTED_MODULES[@]}"; do
+    CURRENT_MODULE="$name"
+    CURRENT_MODULE_POS="$current/$total"
+    log "[$CURRENT_MODULE_POS] Executing module: $name"
 
     # Resolve function name: mod::name  (hyphens kept as-is; bash allows them in function names).
-    local fn="mod::${name}"
+    fn="mod::${name}"
     if ! declare -f "$fn" &>/dev/null; then
       die "Module function $fn not defined"
     fi
 
-    if "$fn"; then
-      log_success "[$current/$total] Module $name completed"
-    else
-      local rc=$?
-      log_error "[$current/$total] Module $name failed (exit code $rc)"
-      log_error "Check the log file: $LOG_FILE"
-      [[ -d "$BACKUP_DIR" ]] && log_error "Backup directory: $BACKUP_DIR"
-      exit "$rc"
-    fi
+    # Run as a plain command in the main shell (no subshell: modules export
+    # PATH, NVM_DIR, ...) and never inside a condition (if/||/&&), which would
+    # disable errexit for the whole module body.  A failing command inside the
+    # module fires the ERR trap (_on_error), which reports and exits.
+    "$fn"
+    log_success "[$CURRENT_MODULE_POS] Module $name completed"
 
-    ((current++))
+    current=$((current + 1))
   done
+
+  CURRENT_MODULE=""
+  CURRENT_MODULE_POS=""
 }
 
 # === Error / interrupt traps ==================================================
 
+# Called from the ERR trap with: exit status, failed command, file:line.
 _on_error() {
-  local rc=$?
+  local rc="$1" cmd="${2:-?}" where="${3:-?}"
+  trap - ERR
+  # Subshells ($(...), pipelines) inherit the trap via -E: leave quietly and
+  # let the parent shell report the failure.
+  [[ "${BASHPID:-$$}" == "$$" ]] || exit "$rc"
+
   echo
   log_error "==========================================="
-  log_error "Script failed with exit code: $rc"
+  if [[ -n "$CURRENT_MODULE" ]]; then
+    log_error "[$CURRENT_MODULE_POS] Module $CURRENT_MODULE failed (exit code $rc)"
+  else
+    log_error "Script failed with exit code: $rc"
+  fi
+  log_error "Failed command: $cmd ($where)"
   log_error "Log file: $LOG_FILE"
-  [[ -d "$BACKUP_DIR" ]] && log_error "Backup dir: $BACKUP_DIR"
+  if [[ -d "$BACKUP_DIR" ]]; then log_error "Backup dir: $BACKUP_DIR"; fi
   log_error "==========================================="
   exit "$rc"
 }
@@ -309,11 +337,15 @@ main() {
     exit 0
   fi
 
+  # Resolve --only/--skip first so a typo stops the run before any work.
+  resolve_modules
+
   # User config.
   load_user_config
 
   # Traps.
-  trap _on_error ERR
+  # shellcheck disable=SC2016
+  trap '_on_error "$?" "$BASH_COMMAND" "${BASH_SOURCE[0]}:${LINENO}"' ERR
   trap _on_interrupt INT TERM
   trap stop_sudo_keepalive EXIT
 
@@ -349,7 +381,7 @@ main() {
 
   log "Installation completed successfully!"
   log "Log file: $LOG_FILE"
-  [[ -d "$BACKUP_DIR" ]] && log "Backup dir: $BACKUP_DIR"
+  if [[ -d "$BACKUP_DIR" ]]; then log "Backup dir: $BACKUP_DIR"; fi
 }
 
 main "$@"

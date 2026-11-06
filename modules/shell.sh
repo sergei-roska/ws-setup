@@ -4,8 +4,6 @@
 mod::shell() {
   begin_section "Shell Enhancement"
 
-  source "$WS_ROOT/config/bashrc.conf"
-
   # Check if already configured
   if grep -q "=== ws-setup Development Environment ===" "$HOME/.bashrc" 2>/dev/null; then
     log_skip "Shell enhancements"; end_section "Shell Enhancement"; return 0

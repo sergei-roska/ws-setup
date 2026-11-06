@@ -51,30 +51,38 @@ check_internet() {
 
 # --- APT helpers -------------------------------------------------------------
 
+# Runs apt-get update unless the package cache is fresh (under an hour old).
+# Returns the status of apt-get update, so callers can react to a failure.
 apt_update_if_needed() {
-  local last_update
   if [[ -f /var/cache/apt/pkgcache.bin ]]; then
+    local last_update now
     last_update=$(stat -c %Y /var/cache/apt/pkgcache.bin)
-    local now
     now=$(date +%s)
-    if (( now - last_update > 3600 )); then
-      sudo apt-get update -y
+    if (( now - last_update <= 3600 )); then
+      return 0
     fi
-  else
-    sudo apt-get update -y
   fi
+  sudo apt-get update -y
 }
 
+# Returns non-zero (and logs an error) when the package cannot be installed.
 install_apt_package() {
   local package="$1"
   if dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed"; then
     log "$package already installed, skipping"
-  else
-    log "Installing $package..."
-    apt_update_if_needed
-    sudo apt-get install -y "$package"
-    log_success "$package installed"
+    return 0
   fi
+
+  log "Installing $package..."
+  if ! apt_update_if_needed; then
+    log_error "apt-get update failed, cannot install $package"
+    return 1
+  fi
+  if ! sudo apt-get install -y "$package"; then
+    log_error "Failed to install $package"
+    return 1
+  fi
+  log_success "$package installed"
 }
 
 # --- Version tracking --------------------------------------------------------
