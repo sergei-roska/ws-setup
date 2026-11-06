@@ -102,7 +102,7 @@ All package lists, versions, and app IDs live in `config/*.conf`. To change PHP 
 
 ```bash
 # config/php.conf
-PHP_VERSION="8.4"
+PHP_VERSION="8.5"
 ```
 
 To add a global npm package:
