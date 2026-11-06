@@ -34,7 +34,6 @@ ws-setup/
 │   ├── apps-ppa.conf       # PPA packages + repo mapping
 │   ├── composer.conf       # Global Composer packages
 │   ├── node.conf           # NVM version, global npm packages
-│   ├── n8n.conf            # n8n container settings and bind mounts
 │   ├── php.conf            # PHP version and extensions
 │   └── ssh-hosts.conf      # SSH key definitions
 ├── lib/                    # Shared libraries (sourced by install.sh)
@@ -54,12 +53,10 @@ ws-setup/
 │   ├── docker.sh
 │   ├── lando.sh
 │   ├── ddev.sh
-│   ├── n8n.sh
 │   ├── php.sh
 │   ├── composer.sh
 │   ├── phpcs.sh
 │   ├── node.sh
-│   ├── claude.sh
 │   ├── brew.sh
 │   ├── terminus.sh
 │   ├── shell.sh
@@ -93,7 +90,6 @@ Execution order and dependencies are declared in `install.sh`:
 register_module  prereqs      ""
 register_module  docker       "prereqs"
 register_module  lando        "docker"
-register_module  n8n          "docker"
 register_module  composer     "php"
 register_module  terminus     "php composer"
 ```
@@ -114,8 +110,6 @@ To add a global npm package:
 ```bash
 # config/node.conf
 NPM_GLOBAL_PACKAGES=(
-  @openai/codex
-  @google/gemini-cli
   yarn
   pnpm
   my-new-tool   # just add here

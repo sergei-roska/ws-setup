@@ -18,7 +18,6 @@ mod::apps-deb() {
   _deb_app_exists() {
     local app="$1"
     case "$app" in
-      jetbrains-toolbox) [[ -x /opt/jetbrains-toolbox/jetbrains-toolbox ]] ;;
       libreoffice)       cmd_exists libreoffice ;;
       zoom)              cmd_exists zoom ;;
       *)                 false ;;
