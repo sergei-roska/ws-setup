@@ -28,8 +28,10 @@ mod::apps-apt() {
     if [[ "$repo" == ppa:* ]]; then
       local slug="${repo#ppa:}"
       local owner="${slug%/*}" name="${slug#*/}"
-      local pattern="ppa.launchpad.net/${owner}/${name}"
-      if grep -rq "$pattern" /etc/apt/sources.list.d /etc/apt/sources.list 2>/dev/null; then
+      # Older releases use ppa.launchpad.net, newer deb822 sources use
+      # ppa.launchpadcontent.net.
+      local pattern="ppa\.launchpad(content)?\.net/${owner}/${name}"
+      if grep -rEq "$pattern" /etc/apt/sources.list.d /etc/apt/sources.list 2>/dev/null; then
         log "PPA $repo already present"
         return 0
       fi

@@ -9,6 +9,8 @@ mod::shell() {
     log_skip "Shell enhancements"; end_section "Shell Enhancement"; return 0
   fi
 
+  # This block is the single owner of the PATH/NVM/Homebrew/Lando setup in
+  # ~/.bashrc: other modules and third-party installers must not add their own.
   log "Configuring shell with custom prompt, aliases, and PATH..."
 
   # shellcheck disable=SC2016
@@ -117,11 +119,16 @@ prompt_path_parts() {
 
 PROMPT_COMMAND=set_bash_prompt
 
-# PATH Configuration
-export PATH="$HOME/.lando/bin:$PATH"
-export PATH="$HOME/.config/composer/vendor/bin:$PATH"
-export PATH="$HOME/.opencode/bin:$PATH"
-export PATH="$HOME/.local/bin:$PATH"
+# PATH Configuration (each entry only when the directory exists)
+for _ws_dir in "$HOME/.lando/bin" "$HOME/.config/composer/vendor/bin" "$HOME/.composer/vendor/bin" "$HOME/.local/bin"; do
+    if [ -d "$_ws_dir" ]; then
+        case ":$PATH:" in
+            *":$_ws_dir:"*) ;;
+            *) export PATH="$_ws_dir:$PATH" ;;
+        esac
+    fi
+done
+unset _ws_dir
 
 # Environment Variables
 export NVM_DIR="$HOME/.nvm"
@@ -131,7 +138,7 @@ export WF_DIR="$HOME/Projects/Workspace/ws-knowledge/workflows"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-# Homebrew (Linux)
+# Homebrew (Linux), only when installed
 if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
     eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi

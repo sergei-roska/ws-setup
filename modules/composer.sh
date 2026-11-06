@@ -41,13 +41,15 @@ mod::composer() {
     fi
   done
 
-  # Ensure global bin is in PATH (check .bashrc to avoid duplicates).
-  local bin_dir="$HOME/.config/composer/vendor/bin"
-  if [[ -d "$bin_dir" ]] && ! grep -q "composer/vendor/bin" "$HOME/.bashrc" 2>/dev/null; then
-    log "Adding Composer global bin to PATH..."
-    echo "export PATH=\"$bin_dir:\$PATH\"" >> "$HOME/.bashrc"
-    export PATH="$bin_dir:$PATH"
-    log_success "Composer bin directory added to PATH"
+  # Put the global bin dir on PATH for the rest of this run. The persistent
+  # entry in ~/.bashrc is owned by the shell module.
+  local bin_dir
+  bin_dir=$(composer global config bin-dir --absolute --quiet 2>/dev/null) || bin_dir=""
+  if [[ -n "$bin_dir" ]]; then
+    case ":$PATH:" in
+      *":$bin_dir:"*) ;;
+      *) export PATH="$bin_dir:$PATH" ;;
+    esac
   fi
 
   log_success "Composer and global packages installation completed"

@@ -14,15 +14,19 @@ start_sudo_keepalive() {
 
   local parent_pid=$$
   log "Starting sudo keepalive background process..."
+  # The keepalive must never touch the terminal: -n makes sudo fail instead of
+  # prompting (a prompt would steal the user's keystrokes), and all three
+  # standard streams are detached (also keeps "install.sh | tee" from waiting
+  # on a pipe held open by the background loop). If a refresh fails, the loop
+  # just ends.
   (
     while true; do
-      # Refresh credentials first, then sleep.
-      sudo -v 2>/dev/null || exit 1
+      sudo -n -v || exit 0
       sleep 60
       # Exit if parent process is gone (orphan protection).
       kill -0 "$parent_pid" 2>/dev/null || exit 0
     done
-  ) &
+  ) </dev/null >/dev/null 2>&1 &
   _SUDO_KEEPALIVE_PID=$!
   log "Sudo keepalive started (PID: $_SUDO_KEEPALIVE_PID)"
 }

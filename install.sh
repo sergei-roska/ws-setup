@@ -352,6 +352,13 @@ main() {
   # Setup environment.
   export APP_GROUPS=${APP_GROUPS:-"essential"}
 
+  # Composer (and Terminus, which embeds it) runs "sudo -K" at every start, a
+  # safety measure so plugins/scripts cannot reuse cached sudo credentials. It
+  # also wipes the keepalive's credentials and brings the password prompt back.
+  # Disabled only for this installer process (not persisted to the shell): the
+  # installer already holds sudo and runs vendor install scripts anyway.
+  export COMPOSER_ALLOW_SUPERUSER=1
+
   if [[ "$VERBOSE" == "true" ]]; then
     echo "Configuration:"
     echo "  NON_INTERACTIVE : $NON_INTERACTIVE"

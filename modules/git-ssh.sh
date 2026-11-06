@@ -85,22 +85,10 @@ mod::git-ssh() {
     log_success "SSH key generated for $service"
   done
 
-  # --- SSH agent ------------------------------------------------------------
-  # Reuse the agent already reachable through SSH_AUTH_SOCK; start a new one
-  # only when there is none, so repeated runs do not spawn agents.
-  if [[ -z "${SSH_AUTH_SOCK:-}" || ! -S "$SSH_AUTH_SOCK" ]]; then
-    local agent_env
-    agent_env=$(ssh-agent -s) || die "Failed to start ssh-agent"
-    eval "$agent_env"
-  fi
-  for service in "${!SSH_KEYS[@]}"; do
-    local key_file="$HOME/.ssh/id_${service}_${SSH_KEYS[$service]}"
-    if [[ -f "$key_file" ]]; then
-      ssh-add "$key_file" 2>/dev/null || true
-    fi
-  done
-
   # --- SSH config -----------------------------------------------------------
+  # Keys are not loaded into an agent here (that would ask for the passphrase
+  # during the install and leave a stray agent behind). AddKeysToAgent loads
+  # each key into the desktop agent on first use instead.
   if [[ ! -f "$HOME/.ssh/config" ]]; then
     log "Creating SSH config..."
 
@@ -115,6 +103,7 @@ Host github.com
   User git
   IdentityFile ~/.ssh/id_github_ed25519
   IdentitiesOnly yes
+  AddKeysToAgent yes
 
 # Bitbucket
 Host bitbucket.org
@@ -122,6 +111,7 @@ Host bitbucket.org
   User git
   IdentityFile ~/.ssh/id_bitbucket_rsa
   IdentitiesOnly yes
+  AddKeysToAgent yes
 EOF
 
     if [[ -n "$pantheon_env_id" ]]; then
@@ -133,6 +123,7 @@ Host pantheon
   User codeserver.dev.$pantheon_env_id
   IdentityFile ~/.ssh/id_pantheon_rsa
   IdentitiesOnly yes
+  AddKeysToAgent yes
 EOF
     fi
 

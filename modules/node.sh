@@ -23,7 +23,9 @@ mod::node() {
     log "NVM already installed"
   else
     log "Installing NVM ${NVM_INSTALL_VERSION}..."
-    curl -fsSo- "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_INSTALL_VERSION}/install.sh" | bash
+    # PROFILE=/dev/null tells the installer not to edit any shell rc file; the
+    # shell module owns the NVM entry in ~/.bashrc.
+    curl -fsSo- "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_INSTALL_VERSION}/install.sh" | PROFILE=/dev/null bash
   fi
 
   [[ -s "$NVM_DIR/nvm.sh" ]] || die "nvm.sh not found in $NVM_DIR"
